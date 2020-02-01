@@ -6,6 +6,7 @@ tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 # Algorithms
 from spinup.algos.tf1.ddpg.ddpg import ddpg as ddpg_tf1
 from spinup.algos.tf1.ppo.ppo import ppo as ppo_tf1
+from spinup.algos.tf1.ppo2.ppo import ppo as ppo2_tf1
 from spinup.algos.tf1.sac.sac import sac as sac_tf1
 from spinup.algos.tf1.td3.td3 import td3 as td3_tf1
 from spinup.algos.tf1.trpo.trpo import trpo as trpo_tf1

@@ -3,6 +3,7 @@ import tensorflow as tf
 import gym
 import time
 import spinup.algos.tf1.ppo.core as core
+import pybullet_envs
 from spinup.utils.logx import EpochLogger
 from spinup.utils.mpi_tf import MpiAdamOptimizer, sync_all_params
 from spinup.utils.mpi_tools import mpi_fork, mpi_avg, proc_id, mpi_statistics_scalar, num_procs
@@ -15,10 +16,11 @@ class PPOBuffer:
     for calculating the advantages of state-action pairs.
     """
 
-    def __init__(self, obs_dim, act_dim, size, gamma=0.99, lam=0.95):
+    def __init__(self, obs_dim, act_dim, size, n_adv, gamma, lam):
         self.obs_buf = np.zeros(core.combined_shape(size, obs_dim), dtype=np.float32)
         self.act_buf = np.zeros(core.combined_shape(size, act_dim), dtype=np.float32)
-        self.adv_buf = np.zeros(size, dtype=np.float32)
+        self.n_adv = n_adv
+        self.adv_bufs = [np.zeros(size, dtype=np.float32) for _ in range(n_adv)]
         self.rew_buf = np.zeros(size, dtype=np.float32)
         self.ret_buf = np.zeros(size, dtype=np.float32)
         self.val_buf = np.zeros(size, dtype=np.float32)
@@ -57,10 +59,11 @@ class PPOBuffer:
         path_slice = slice(self.path_start_idx, self.ptr)
         rews = np.append(self.rew_buf[path_slice], last_val)
         vals = np.append(self.val_buf[path_slice], last_val)
-        
-        # the next two lines implement GAE-Lambda advantage calculation
-        deltas = rews[:-1] + self.gamma * vals[1:] - vals[:-1]
-        self.adv_buf[path_slice] = core.discount_cumsum(deltas, self.gamma * self.lam)
+
+        for i in range(self.n_adv):
+            # the next two lines implement GAE-Lambda advantage calculation
+            deltas = rews[:-1] + self.gamma * vals[1:] - vals[:-1]
+            self.adv_bufs[i][path_slice] = core.discount_cumsum(deltas, self.gamma * self.lam[i])
         
         # the next line computes rewards-to-go, to be targets for the value function
         self.ret_buf[path_slice] = core.discount_cumsum(rews, self.gamma)[:-1]
@@ -75,17 +78,19 @@ class PPOBuffer:
         """
         assert self.ptr == self.max_size    # buffer has to be full before you can get
         self.ptr, self.path_start_idx = 0, 0
-        # the next two lines implement the advantage normalization trick
-        adv_mean, adv_std = mpi_statistics_scalar(self.adv_buf)
-        self.adv_buf = (self.adv_buf - adv_mean) / adv_std
-        return [self.obs_buf, self.act_buf, self.adv_buf, 
+        for i in range(self.n_adv):
+            # the next two lines implement the advantage normalization trick
+            adv_mean, adv_std = mpi_statistics_scalar(self.adv_bufs[i])
+            self.adv_bufs[i] = (self.adv_bufs[i] - adv_mean) / adv_std
+        adv_buf = np.add.reduce(self.adv_bufs) / self.n_adv
+        return [self.obs_buf, self.act_buf, adv_buf,
                 self.ret_buf, self.logp_buf]
 
 
 
 def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0, 
         steps_per_epoch=4000, epochs=50, gamma=0.99, clip_ratio=0.2, pi_lr=3e-4,
-        vf_lr=1e-3, train_pi_iters=80, train_v_iters=80, lam=0.97, max_ep_len=1000,
+        vf_lr=1e-3, train_pi_iters=80, train_v_iters=80, lam=[0.97,0.93], max_ep_len=1000,
         target_kl=0.01, logger_kwargs=dict(), save_freq=10):
     """
     Proximal Policy Optimization (by clipping), 
@@ -192,7 +197,7 @@ def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 
     # Experience buffer
     local_steps_per_epoch = int(steps_per_epoch / num_procs())
-    buf = PPOBuffer(obs_dim, act_dim, local_steps_per_epoch, gamma, lam)
+    buf = PPOBuffer(obs_dim, act_dim, local_steps_per_epoch, len(lam), gamma, lam)
 
     # Count variables
     var_counts = tuple(core.count_vars(scope) for scope in ['pi', 'v'])
