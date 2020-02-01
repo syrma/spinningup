@@ -16,11 +16,11 @@ class PPOBuffer:
     for calculating the advantages of state-action pairs.
     """
 
-    def __init__(self, obs_dim, act_dim, size, n_adv, gamma, lam):
+    def __init__(self, obs_dim, act_dim, size, gamma, lam):
         self.obs_buf = np.zeros(core.combined_shape(size, obs_dim), dtype=np.float32)
         self.act_buf = np.zeros(core.combined_shape(size, act_dim), dtype=np.float32)
-        self.n_adv = n_adv
-        self.adv_bufs = [np.zeros(size, dtype=np.float32) for _ in range(n_adv)]
+        self.n_adv = len(lam)
+        self.adv_bufs = [np.zeros(size, dtype=np.float32) for _ in range(self.n_adv)]
         self.rew_buf = np.zeros(size, dtype=np.float32)
         self.ret_buf = np.zeros(size, dtype=np.float32)
         self.val_buf = np.zeros(size, dtype=np.float32)
@@ -197,7 +197,7 @@ def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 
     # Experience buffer
     local_steps_per_epoch = int(steps_per_epoch / num_procs())
-    buf = PPOBuffer(obs_dim, act_dim, local_steps_per_epoch, len(lam), gamma, lam)
+    buf = PPOBuffer(obs_dim, act_dim, local_steps_per_epoch, gamma, lam)
 
     # Count variables
     var_counts = tuple(core.count_vars(scope) for scope in ['pi', 'v'])
