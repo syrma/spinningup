@@ -16,10 +16,11 @@ class PPOBuffer:
     for calculating the advantages of state-action pairs.
     """
 
-    def __init__(self, obs_dim, act_dim, size, gamma, lam):
+    def __init__(self, obs_dim, act_dim, size, gamma, lam, coeff):
         self.obs_buf = np.zeros(core.combined_shape(size, obs_dim), dtype=np.float32)
         self.act_buf = np.zeros(core.combined_shape(size, act_dim), dtype=np.float32)
         self.n_adv = len(lam)
+        self.adv_coeff = np.expand_dims(coeff, axis=-1)
         self.adv_bufs = [np.zeros(size, dtype=np.float32) for _ in range(self.n_adv)]
         self.rew_buf = np.zeros(size, dtype=np.float32)
         self.ret_buf = np.zeros(size, dtype=np.float32)
@@ -82,7 +83,7 @@ class PPOBuffer:
             # the next two lines implement the advantage normalization trick
             adv_mean, adv_std = mpi_statistics_scalar(self.adv_bufs[i])
             self.adv_bufs[i] = (self.adv_bufs[i] - adv_mean) / adv_std
-        adv_buf = np.add.reduce(self.adv_bufs) / self.n_adv
+        adv_buf = np.add.reduce(self.adv_coeff * self.adv_bufs)
         return [self.obs_buf, self.act_buf, adv_buf,
                 self.ret_buf, self.logp_buf]
 
@@ -90,7 +91,7 @@ class PPOBuffer:
 
 def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0, 
         steps_per_epoch=4000, epochs=50, gamma=0.99, clip_ratio=0.2, pi_lr=3e-4,
-        vf_lr=1e-3, train_pi_iters=80, train_v_iters=80, lam=[0.97,0.93], max_ep_len=1000,
+        vf_lr=1e-3, train_pi_iters=80, train_v_iters=80, lam=(0.97,0.93), coeff=None, max_ep_len=1000,
         target_kl=0.01, logger_kwargs=dict(), save_freq=10):
     """
     Proximal Policy Optimization (by clipping), 
@@ -197,7 +198,7 @@ def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 
     # Experience buffer
     local_steps_per_epoch = int(steps_per_epoch / num_procs())
-    buf = PPOBuffer(obs_dim, act_dim, local_steps_per_epoch, gamma, lam)
+    buf = PPOBuffer(obs_dim, act_dim, local_steps_per_epoch, gamma, lam, coeff)
 
     # Count variables
     var_counts = tuple(core.count_vars(scope) for scope in ['pi', 'v'])
@@ -313,6 +314,7 @@ if __name__ == '__main__':
     parser.add_argument('--l', type=int, default=2)
     parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--lam', type=tuple, default=(0.97,0.93))
+    parser.add_argument('--coeff', type=tuple, default=None)
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--cpu', type=int, default=4)
     parser.add_argument('--steps', type=int, default=4000)
@@ -326,6 +328,7 @@ if __name__ == '__main__':
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
 
     ppo(lambda : gym.make(args.env), actor_critic=core.mlp_actor_critic,
-        ac_kwargs=dict(hidden_sizes=[args.hid]*args.l), gamma=args.gamma, 
+        ac_kwargs=dict(hidden_sizes=[args.hid]*args.l), gamma=args.gamma,
+        lam=args.lam, coeff=args.coeff or (1/len(args.lam),)*len(args.lam),
         seed=args.seed, steps_per_epoch=args.steps, epochs=args.epochs,
         logger_kwargs=logger_kwargs)
