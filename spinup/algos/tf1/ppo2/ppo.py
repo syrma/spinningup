@@ -7,7 +7,7 @@ import pybullet_envs
 from spinup.utils.logx import EpochLogger
 from spinup.utils.mpi_tf import MpiAdamOptimizer, sync_all_params
 from spinup.utils.mpi_tools import mpi_fork, mpi_avg, proc_id, mpi_statistics_scalar, num_procs
-
+import wandb
 
 class PPOBuffer:
     """
@@ -169,8 +169,15 @@ def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 
     """
 
+    config = {'seed': locals().get('seed'), 'steps_per_epoch': locals().get('steps_per_epoch'),'epochs': locals().get('epochs'),
+              'gamma': locals().get('gamma'), 'clip_ratio': locals().get('clip_ratio'),'coeff':coeff,
+              'pi_lr': locals().get('pi_lr'),'vf_lr': locals().get('vf_lr'), 'lam': locals().get('lam'), 'max_ep_len': locals().get('max_ep_len'),
+              'target_kl': locals().get('target_kl'), 'train_pi_iters': locals().get('train_pi_iters'),
+              'train_v_iters': locals().get('train_v_iters')}
+    wandb.init(project='generalized-critic', config=config)
     logger = EpochLogger(**logger_kwargs)
     logger.save_config(locals())
+
 
     seed += 10000 * proc_id()
     tf.set_random_seed(seed)
@@ -241,6 +248,7 @@ def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
                 logger.log('Early stopping at step %d due to reaching max kl.'%i)
                 break
         logger.store(StopIter=i)
+        wandb.log({'StopIter':i})
         for _ in range(train_v_iters):
             sess.run(train_v, feed_dict=inputs)
 
@@ -250,6 +258,7 @@ def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
                      KL=kl, Entropy=ent, ClipFrac=cf,
                      DeltaLossPi=(pi_l_new - pi_l_old),
                      DeltaLossV=(v_l_new - v_l_old))
+        wandb.log({'LossPi':pi_l_old, 'LossV':v_l_old, 'KL':kl, 'Entropy':ent, 'ClipFrac':cf, 'DeltaLossPi':(pi_l_new-pi_l_old), 'DeltaLossV':(v_l_new-v_l_old)})
 
     start_time = time.time()
     o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
@@ -266,6 +275,7 @@ def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
             # save and log
             buf.store(o, a, r, v_t, logp_t)
             logger.store(VVals=v_t)
+            wandb.log({'VVals':v_t})
 
             # Update obs (critical!)
             o = o2
@@ -280,6 +290,7 @@ def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
                 if terminal:
                     # only save EpRet / EpLen if trajectory finished
                     logger.store(EpRet=ep_ret, EpLen=ep_len)
+                    wandb.log({'EpRet':ep_ret, 'EpLen':ep_len})
                 o, ep_ret, ep_len = env.reset(), 0, 0
 
         # Save model
@@ -305,6 +316,7 @@ def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         logger.log_tabular('StopIter', average_only=True)
         logger.log_tabular('Time', time.time()-start_time)
         logger.dump_tabular()
+        wandb.log({'Epoch':epoch, 'TotalEnvInteracts':(epoch+1)*steps_per_epoch, 'Time':time.time()-start_time})
 
 if __name__ == '__main__':
     import argparse
