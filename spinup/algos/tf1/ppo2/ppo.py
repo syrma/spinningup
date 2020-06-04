@@ -248,7 +248,7 @@ def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
                 logger.log('Early stopping at step %d due to reaching max kl.'%i)
                 break
         logger.store(StopIter=i)
-        wandb.log({'StopIter':i})
+
         for _ in range(train_v_iters):
             sess.run(train_v, feed_dict=inputs)
 
@@ -258,13 +258,17 @@ def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
                      KL=kl, Entropy=ent, ClipFrac=cf,
                      DeltaLossPi=(pi_l_new - pi_l_old),
                      DeltaLossV=(v_l_new - v_l_old))
-        wandb.log({'LossPi':pi_l_old, 'LossV':v_l_old, 'KL':kl, 'Entropy':ent, 'ClipFrac':cf, 'DeltaLossPi':(pi_l_new-pi_l_old), 'DeltaLossV':(v_l_new-v_l_old)})
+
+        return i, pi_l_old, v_l_old, kl, ent, cf, pi_l_new-pi_l_old, v_l_new-v_l_old
 
     start_time = time.time()
     o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
 
     # Main loop: collect experience in env and update/log each epoch
     for epoch in range(epochs):
+        vvals = []
+        ep_rets = []
+        ep_lens = []
         for t in range(local_steps_per_epoch):
             a, v_t, logp_t = sess.run(get_action_ops, feed_dict={x_ph: o.reshape(1,-1)})
 
@@ -275,7 +279,7 @@ def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
             # save and log
             buf.store(o, a, r, v_t, logp_t)
             logger.store(VVals=v_t)
-            wandb.log({'VVals':v_t})
+            vvals.append(v_t)
 
             # Update obs (critical!)
             o = o2
@@ -290,7 +294,8 @@ def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
                 if terminal:
                     # only save EpRet / EpLen if trajectory finished
                     logger.store(EpRet=ep_ret, EpLen=ep_len)
-                    wandb.log({'EpRet':ep_ret, 'EpLen':ep_len})
+                    ep_rets.append(ep_ret)
+                    ep_lens.append(ep_len)
                 o, ep_ret, ep_len = env.reset(), 0, 0
 
         # Save model
@@ -298,7 +303,7 @@ def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
             logger.save_state({'env': env}, None)
 
         # Perform PPO update!
-        update()
+        StopIter, LossPi, LossV, KL, Entropy, ClipFrac, DeltaLossPi, DeltaLossV = update()
 
         # Log info about epoch
         logger.log_tabular('Epoch', epoch)
@@ -316,7 +321,20 @@ def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         logger.log_tabular('StopIter', average_only=True)
         logger.log_tabular('Time', time.time()-start_time)
         logger.dump_tabular()
-        wandb.log({'Epoch':epoch, 'TotalEnvInteracts':(epoch+1)*steps_per_epoch, 'Time':time.time()-start_time})
+        wandb.log({'Epoch': epoch,
+                   'EpRet': np.mean(ep_rets),
+                   'EpLen': wandb.Histogram(ep_lens),
+                   'VVals': wandb.Histogram(vvals),
+                   'TotalEnvInteracts':(epoch+1)*steps_per_epoch,
+                   'LossPi': LossPi,
+                   'LossV': LossV,
+                   'DeltaLossPi': DeltaLossPi,
+                   'DeltaLossV': DeltaLossV,
+                   'Entropy': Entropy,
+                   'KL': KL,
+                   'ClipFrac': ClipFrac,
+                   'StopIter': StopIter,
+                   'Time':time.time()-start_time})
 
 if __name__ == '__main__':
     import argparse
