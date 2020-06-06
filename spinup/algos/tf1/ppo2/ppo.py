@@ -174,7 +174,7 @@ def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
               'pi_lr': pi_lr,'vf_lr': vf_lr, 'lam': lam, 'max_ep_len': max_ep_len,
               'target_kl': target_kl, 'train_pi_iters': train_pi_iters,
               'train_v_iters': train_v_iters}
-    wandb.init(project='generalized-critic', config=config)
+    wandb.init(project='generalized-critic', config=config, monitor_gym=True)
     logger = EpochLogger(**logger_kwargs)
     logger.save_config(locals())
 
