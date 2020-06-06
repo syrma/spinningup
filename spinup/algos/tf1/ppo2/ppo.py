@@ -169,11 +169,11 @@ def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 
     """
 
-    config = {'seed': locals().get('seed'), 'steps_per_epoch': locals().get('steps_per_epoch'),'epochs': locals().get('epochs'),
-              'gamma': locals().get('gamma'), 'clip_ratio': locals().get('clip_ratio'),'coeff':coeff,
-              'pi_lr': locals().get('pi_lr'),'vf_lr': locals().get('vf_lr'), 'lam': locals().get('lam'), 'max_ep_len': locals().get('max_ep_len'),
-              'target_kl': locals().get('target_kl'), 'train_pi_iters': locals().get('train_pi_iters'),
-              'train_v_iters': locals().get('train_v_iters')}
+    config = {'seed': seed, 'steps_per_epoch': steps_per_epoch,'epochs': epochs,
+              'gamma': gamma, 'clip_ratio': clip_ratio,'coeff':coeff,
+              'pi_lr': pi_lr,'vf_lr': vf_lr, 'lam': lam, 'max_ep_len': max_ep_len,
+              'target_kl': target_kl, 'train_pi_iters': train_pi_iters,
+              'train_v_iters': train_v_iters}
     wandb.init(project='generalized-critic', config=config)
     logger = EpochLogger(**logger_kwargs)
     logger.save_config(locals())
@@ -186,7 +186,8 @@ def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     env = env_fn()
     obs_dim = env.observation_space.shape
     act_dim = env.action_space.shape
-    
+    wandb.config.env = env
+
     # Share information about action space with policy architecture
     ac_kwargs['action_space'] = env.action_space
 
