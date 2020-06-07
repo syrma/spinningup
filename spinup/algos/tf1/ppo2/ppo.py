@@ -183,7 +183,10 @@ def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     tf.set_random_seed(seed)
     np.random.seed(seed)
 
-    env = env_fn()
+    env = real_env = env_fn()
+    monitor_env = gym.wrappers.Monitor(real_env, 'recordings', force=True)
+    wandb.config.env = real_env
+
     obs_dim = env.observation_space.shape
     act_dim = env.action_space.shape
     wandb.config.env = env
@@ -263,10 +266,11 @@ def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         return i, pi_l_old, v_l_old, kl, ent, cf, pi_l_new-pi_l_old, v_l_new-v_l_old
 
     start_time = time.time()
-    o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
 
     # Main loop: collect experience in env and update/log each epoch
     for epoch in range(epochs):
+        env = monitor_env
+        o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
         vvals = []
         ep_rets = []
         ep_lens = []
@@ -298,6 +302,7 @@ def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
                     ep_rets.append(ep_ret)
                     ep_lens.append(ep_len)
                 o, ep_ret, ep_len = env.reset(), 0, 0
+                env = real_env
 
         # Save model
         if (epoch % save_freq == 0) or (epoch == epochs-1):
