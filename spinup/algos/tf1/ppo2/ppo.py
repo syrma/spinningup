@@ -91,7 +91,7 @@ class PPOBuffer:
 
 def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0, 
         steps_per_epoch=4000, epochs=50, gamma=0.99, clip_ratio=0.2, pi_lr=3e-4,
-        vf_lr=1e-3, train_pi_iters=80, train_v_iters=80, lam=(0.97,0.93), coeff=None, max_ep_len=1000,
+        vf_lr=1e-3, train_pi_iters=80, train_v_iters=80, lam1=0.97, lam2=0.93, coeff=None, max_ep_len=1000,
         target_kl=0.01, logger_kwargs=dict(), save_freq=10):
     """
     Proximal Policy Optimization (by clipping), 
@@ -169,18 +169,11 @@ def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 
     """
 
-    config = {'seed': seed, 'steps_per_epoch': steps_per_epoch, 'epochs': epochs,
-              'gamma': gamma, 'clip_ratio': clip_ratio, 'coeff': coeff,
-              'pi_lr': pi_lr,'vf_lr': vf_lr, 'lam1': lam[0], 'lam2': lam[1], 'max_ep_len': max_ep_len,
-              'target_kl': target_kl, 'train_pi_iters': train_pi_iters,
-              'train_v_iters': train_v_iters}
-    wandb.init(project='generalized-critic', entity='syrma', config=config, monitor_gym=True)
-    print(locals())
+    coeff = (coeff, 1-coeff)
+    lam = (lam1, lam2)
+
     logger = EpochLogger(**logger_kwargs)
     logger.save_config(locals())
-
-    coeff = (coeff, 1-coeff)
-
 
     seed += 10000 * proc_id()
     tf.set_random_seed(seed)
@@ -188,11 +181,9 @@ def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 
     env = real_env = env_fn()
     monitor_env = gym.wrappers.Monitor(real_env, 'recordings', force=True)
-    wandb.config.env = real_env
 
     obs_dim = env.observation_space.shape
     act_dim = env.action_space.shape
-    wandb.config.env = env
 
     # Share information about action space with policy architecture
     ac_kwargs['action_space'] = env.action_space

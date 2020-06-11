@@ -7,21 +7,28 @@ Designed to show wandb integration with pytorch.
 """
 
 import wandb
-import os 
+import spinup
+import gym
+import pybullet_envs
+
+
 hyperparameter_defaults = dict(
     coeff = 0.5,
     lam1 = 0.93, 
     lam2 = 0.97,
-    env = 'AntBulletEnv-v0'
+    env_name = 'AntBulletEnv-v0'
     )
-
-wandb.init(config=hyperparameter_defaults, project='generalized-critic', entity='syrma', monitor_gym=True)
-config = wandb.config
-
-def main():
-   cmd = 'python -m spinup.run ppo2 --env_name ' + config.env + ' --coeff ' + str(config.coeff)
-   os.system(cmd)
 
 
 if __name__ == '__main__':
-   main()
+   wandb.init(config=hyperparameter_defaults, project='generalized-critic', entity='syrma', monitor_gym=True)
+   config = dict(wandb.config)
+
+   # Make 'env_fn' from 'env_name'
+   if 'env_name' in config:
+      env_name = config['env_name']
+      config['env_fn'] = lambda : gym.make(env_name)
+      del config['env_name']
+
+   # Run thunk
+   spinup.ppo2_tf1(**config)
