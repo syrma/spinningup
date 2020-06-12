@@ -29,6 +29,8 @@ setup(
         'tensorflow>=1.8.0,<2.0',
         'torch==1.3.1',
         'tqdm'
+        'pybullet'
+        'wandb'
     ],
     description="Teaching tools for introducing people to deep RL.",
     author="Joshua Achiam",
