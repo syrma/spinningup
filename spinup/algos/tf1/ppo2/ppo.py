@@ -8,6 +8,7 @@ from spinup.utils.logx import EpochLogger
 from spinup.utils.mpi_tf import MpiAdamOptimizer, sync_all_params
 from spinup.utils.mpi_tools import mpi_fork, mpi_avg, proc_id, mpi_statistics_scalar, num_procs
 import wandb
+import tempfile
 
 class PPOBuffer:
     """
@@ -180,7 +181,8 @@ def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     np.random.seed(seed)
 
     env = real_env = env_fn()
-    monitor_env = gym.wrappers.Monitor(real_env, 'recordings', force=True)
+    recordings = tempfile.mkdtemp(prefix='recordings', dir='.')
+    monitor_env = gym.wrappers.Monitor(real_env, recordings, force=True)
 
     obs_dim = env.observation_space.shape
     act_dim = env.action_space.shape
